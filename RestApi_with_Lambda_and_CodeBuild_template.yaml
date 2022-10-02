@@ -101,7 +101,7 @@ Resources:
               - 'sts:AssumeRole'
       Path: /
       ManagedPolicyArns:
-        - !Ref S3AritfactsServicePolicy
+        - !Ref S3ArtifactsServicePolicy
       Policies:
         - PolicyName: !Sub 'codebuild-service-role-${Subdomain}-${EnvironmentName}'
           PolicyDocument:
@@ -140,11 +140,15 @@ Resources:
         Packaging: ZIP
         Path: !Sub 'backend/${Subdomain}-${EnvironmentName}'
         NamespaceType: BUILD_ID
-        Name: !Sub '/$(date %Y-%m-%d).zip'
+        Name: 'artifact.zip'
       Environment:
         Type: LINUX_CONTAINER
         ComputeType: BUILD_GENERAL1_SMALL
         Image: aws/codebuild/standard:1.0
+        EnvironmentVariables:
+          - Name: lambda_name
+            Type: PLAINTEXT
+            Value: !Sub '${Subdomain}-${EnvironmentName}'
       Source:
         Type: GITHUB
         Location: !Ref GitRepository
