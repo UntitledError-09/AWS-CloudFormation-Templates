@@ -84,8 +84,8 @@ Resources:
                   - 'logs:CreateLogStream'
                   - 'logs:PutLogEvents'
                 Resource: 
-                  - !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:${LambdaCloudWatchLogGroupName}:log-stream:${Subdomain}.${Domain}-${EnvironmentName}'
-                  - !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:${LambdaCloudWatchLogGroupName}'
+                  - !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/${Subdomain}-${EnvironmentName}:log-stream:*'
+                  - !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/${Subdomain}-${EnvironmentName}'
   CodeBuildIAMRole:
     Type: 'AWS::IAM::Role'
     Properties:
@@ -102,7 +102,7 @@ Resources:
       ManagedPolicyArns:
         - !Ref S3ArtifactsServicePolicy
       Policies:
-        - PolicyName: !Sub 'codebuild-service-role-${Subdomain}-${EnvironmentName}'
+        - PolicyName: !Sub 'update-lambda-service-policy-${Subdomain}-${EnvironmentName}'
           PolicyDocument:
             Version: 2012-10-17
             Statement:
@@ -121,13 +121,26 @@ Resources:
                 Resource: 
                   - !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${Subdomain}-${EnvironmentName}'
                   - !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${Subdomain}-${EnvironmentName}:*'
+        - PolicyName: !Sub 'cloudwatch-logs-service-policy-${Subdomain}-${EnvironmentName}'
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'logs:CreateLogStream'
+                  - 'logs:PutLogEvents'
+                  - 'logs:CreateLogGroup'
+                Resource: 
+                  - !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/codebuild/${Subdomain}-${EnvironmentName}:log-stream:*'
+                  - !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/codebuild/${Subdomain}-${EnvironmentName}'
     DependsOn:
       - LambdaFunction
-  CloudWatchLogStream:
-    Type: 'AWS::Logs::LogStream'
+  LambdaCWLogGroup:
+    Type: 'AWS::Logs::LogGroup'
     Properties:
-      LogGroupName: !Ref LambdaCloudWatchLogGroupName
-      LogStreamName: !Sub '${Subdomain}.${Domain}-${EnvironmentName}'
+      LogGroupName: !Sub '/aws/lambda/${Subdomain}-${EnvironmentName}'
+      RetentionInDays: 365
+    DependsOn: LambdaFunction
   CodeBuildProject:
     Type: AWS::CodeBuild::Project
     Properties:
@@ -205,9 +218,6 @@ Parameters:
   GitBranch:
     Type: String
     Description: 'Name of branch to be deployed'
-  LambdaCloudWatchLogGroupName:
-    Type: String
-    Default: lambda-execution-logs
   S3ArtifactsBucketArn:
     Type: 'String'
     Description: 'ARN of S3 Bucket being used for storing artifacts'
