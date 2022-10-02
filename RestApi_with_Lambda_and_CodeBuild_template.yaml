@@ -6,8 +6,13 @@ Resources:
       Code:
         ZipFile: |
           exports.handler =  async function(event, context) {
-            console.log("EVENT: \n" + JSON.stringify(event, null, 2))
-            return context.logStreamName
+            let responseBody = JSON.stringify("EVENT: \n" + JSON.stringify(event, null, 2));
+            console.log(responseBody)
+            let response = {
+              statusCode: 200,
+              body: responseBody
+            };
+            return response;
           }
       FunctionName: !Sub '${Subdomain}-${EnvironmentName}'
       Handler: index.handler
@@ -24,7 +29,7 @@ Resources:
     Properties:
       RestApiId: !Ref APIGatewayRestAPI
       ParentId: !GetAtt APIGatewayRestAPI.RootResourceId
-      PathPart: !Sub '${Subdomain}-${EnvironmentName}'
+      PathPart: '{proxy+}'
     DependsOn:
       - APIGatewayRestAPI
   APIGatewayMethod:
@@ -32,18 +37,12 @@ Resources:
     Properties:
       RestApiId: !Ref APIGatewayRestAPI
       ResourceId: !Ref APIGatewayResource
-      HttpMethod: POST
+      HttpMethod: ANY
       AuthorizationType: NONE
-      MethodResponses:
-        - StatusCode: 200
       Integration:
-        Type: AWS
-        IntegrationResponses:
-          - StatusCode: 200
+        Type: AWS_PROXY
         IntegrationHttpMethod: POST
-        Uri: !Sub 
-          - 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${LambdaFuncNameArn}/invocations'
-          - LambdaFuncNameArn: !GetAtt LambdaFunction.Arn
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${LambdaFunction.Arn}/invocations'
     DependsOn:
       - APIGatewayResource
   APIGatewayDeployment:
@@ -136,7 +135,7 @@ Resources:
       ServiceRole: !Ref CodeBuildIAMRole
       Artifacts:
         Type: S3
-        Location: !Ref S3ArtifactsBucketName
+        Location: !Ref S3ArtifactsBucketArn
         Packaging: ZIP
         Path: !Sub 'backend/${Subdomain}-${EnvironmentName}'
         NamespaceType: BUILD_ID
@@ -162,6 +161,33 @@ Resources:
             - Type: BASE_REF
               Pattern: !Sub '^refs/heads/${GitBranch}$'
               ExcludeMatchedPattern: false
+  CustomDomain:
+    Type: AWS::ApiGateway::DomainName
+    Properties: 
+      DomainName: !Sub '${Subdomain}.${Domain}'
+      CertificateArn: !Ref CertificateArn
+      EndpointConfiguration:
+        Types:
+          - EDGE
+      SecurityPolicy: TLS_1_2
+  RecordSet:
+    Type: AWS::Route53::RecordSet
+    Properties:
+      Name: !Sub '${Subdomain}.${Domain}'
+      Type: A
+      HostedZoneId: !Ref HostedZoneId
+      AliasTarget:
+        DNSName: !GetAtt CustomDomain.DistributionDomainName
+        EvaluateTargetHealth: false
+        HostedZoneId: !GetAtt CustomDomain.DistributionHostedZoneId
+  APIMapping:
+    Type: AWS::ApiGateway::BasePathMapping
+    Properties: 
+      DomainName: !Sub '${Subdomain}.${Domain}'
+      RestApiId: !Ref APIGatewayRestAPI
+      Stage: !Ref EnvironmentName
+    DependsOn:
+      - CustomDomain
 
 Parameters:
   Domain:
@@ -169,10 +195,10 @@ Parameters:
     Description: 'Eg: example.com'
   Subdomain:
     Type: String
-    Description: 'Only prefix. Eg: api, dev, dev-api, beta'
+    Description: 'Only prefix. Eg: api, dev, dev-api, beta, etc.'
   EnvironmentName:
     Type: String
-    Default: Prod
+    Description: 'Eg: dev, beta, test, prod, etc.'
   GitRepository:
     Type: String
     Description: 'HTTPS clone URL to the repository (Must have OAuth access setup *with Organization access, if repository is in an organization*)'
@@ -182,13 +208,21 @@ Parameters:
   LambdaCloudWatchLogGroupName:
     Type: String
     Default: lambda-execution-logs
-  S3ArtifactsBucketName:
+  S3ArtifactsBucketArn:
     Type: 'String'
     Description: 'ARN of S3 Bucket being used for storing artifacts'
   S3ArtifactsServicePolicy:
     Type: 'String'
     Description: 'ARN of IAM Policy with write permissions into S3 Artifacts Bucket'
+  HostedZoneId:
+    Type: AWS::Route53::HostedZone::Id
+  CertificateArn:
+    Description: "ACM Certificate ARN"
+    Type: String
+
 Outputs:
-  RestApiArn: 
-    Value: !Ref APIGatewayRestAPI
-    Description: ARN of created RestApi
+  RestApiURL:
+    Description: 'URL of the created REST API'
+    Value: !Sub 'https://${Subdomain}.${Domain}'
+    Export:
+      Name: !Sub '${AWS::StackName}'
