@@ -15,8 +15,9 @@ Resources:
             return response;
           }
       FunctionName: !Sub '${Subdomain}-${EnvironmentName}'
-      Handler: index.handler
-      Runtime: nodejs12.x
+      Handler: lambda.handler
+      Timeout: 29
+      Runtime: nodejs14.x
       Role: !GetAtt LambdaIAMRole.Arn
   APIGatewayRestAPI:
     Type: 'AWS::ApiGateway::RestApi'
